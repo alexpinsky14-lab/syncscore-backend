@@ -1,3 +1,4 @@
+console.log("Beatoven key detected?", !!process.env.BEATOVEN_API_KEY);
 // /api/generate-track.js
 
 export default async function handler(req, res) {
