@@ -1,10 +1,24 @@
 export default async function handler(req, res) {
-  // ✅ Allow requests from your Framer site
-  res.setHeader("Access-Control-Allow-Origin", "https://cultural-concept-965314.framer.app");
+  // ✅ Dynamically allow requests from trusted domains
+  const allowedOrigins = [
+    "https://cultural-concept-965314.framer.app", // your current Framer domain
+    "https://framer.website",                     // optional fallback for new publishes
+    "https://syncscore.vercel.app"                // if you ever add your own domain
+  ];
+
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    // Default to * for safety during development
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // ✅ Handle preflight (browser check) requests
+  // ✅ Handle preflight requests
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
