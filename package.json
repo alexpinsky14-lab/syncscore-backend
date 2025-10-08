@@ -1,0 +1,9 @@
+{
+  "name": "syncscore-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node api/generate-track.js"
+  },
+  "dependencies": {}
+}
