@@ -1,4 +1,3 @@
-console.log("Beatoven key detected?", !!process.env.BEATOVEN_API_KEY);
 // /api/generate-track.js
 
 export default async function handler(req, res) {
@@ -13,7 +12,7 @@ export default async function handler(req, res) {
 
   try {
     // 1️⃣ Create a track on Beatoven
-    const createRes = await fetch("https://api.beatoven.ai/v1/tracks", {
+    const createRes = await fetch("https://public-api.beatoven.ai/v1/tracks", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -32,7 +31,7 @@ export default async function handler(req, res) {
     console.log("Track created:", trackId);
 
     // 2️⃣ Ask Beatoven to generate the full track
-    await fetch(`https://api.beatoven.ai/v1/tracks/${trackId}/generate`, {
+    await fetch(`https://public-api.beatoven.ai/v1/tracks/${trackId}/generate`, {
       method: "POST",
       headers: {
         "x-api-key": process.env.BEATOVEN_API_KEY,
@@ -45,7 +44,7 @@ export default async function handler(req, res) {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 5000)); // wait 5 seconds
 
-      const checkRes = await fetch(`https://api.beatoven.ai/v1/tracks/${trackId}`, {
+      const checkRes = await fetch(`https://public-api.beatoven.ai/v1/tracks/${trackId}`, {
         headers: { "x-api-key": process.env.BEATOVEN_API_KEY },
       });
 
