@@ -1,10 +1,5 @@
 // /api/generate-track.js
 
-import { put } from "@vercel/blob"; // optional, only used if you want to upload directly
-import { fetch } from "undici"; // if you're using Node 18+, you can omit this import
-
-// /api/generate-track.js
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
