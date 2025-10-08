@@ -5,5 +5,7 @@
   "scripts": {
     "start": "node api/generate-track.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@vercel/blob": "latest"
+  }
 }
