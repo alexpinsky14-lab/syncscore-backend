@@ -1,89 +1,52 @@
-// api/generate-track.js
-
+// /api/generate-track.js
 export default async function handler(req, res) {
-  // CORS headers so your Framer app can call this API
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  if (req.method !== "POST") {
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
-  }
 
   try {
     const { mood, genre, duration } = req.body;
 
-// 1️⃣ Create a track on Beatoven
-const createRes = await fetch("https://public-api.beatoven.ai/v1/tracks", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-api-key": process.env.BEATOVEN_API_KEY,
-  },
-  body: JSON.stringify({ mood, genre, duration }),
-});
+    // 👇 1️⃣ Build a clean Beatoven prompt from your UI fields
+    const prompt = `Generate ${mood || "ambient"} ${genre || "background"} music, around ${duration || 60} seconds long, unobtrusive, suitable for video editing.`;
 
-const createText = await createRes.text();
-console.log("🔍 Beatoven create response:", createText);
+    // 👇 2️⃣ Send the request to your Make.com webhook
+    const webhookUrl = process.env.MAKE_WEBHOOK_URL;
+    if (!webhookUrl) throw new Error("MAKE_WEBHOOK_URL not set in environment");
 
-let createData;
-try {
-  createData = JSON.parse(createText);
-} catch {
-  console.error("Failed to parse JSON response from Beatoven");
-  throw new Error("Invalid JSON returned from Beatoven");
-}
+    console.log("🔗 Sending to Make webhook:", webhookUrl);
+    console.log("🎵 Prompt:", prompt);
 
-    // 2️⃣ Extract a track ID (or similar key) — adapt based on what your API returns
-    const trackId =
-      createData?.data?.id ||
-      createData?.id ||
-      createData?.trackId;
-
-    if (!trackId) {
-      throw new Error("Beatoven did not return a track ID");
-    }
-
-    // 3️⃣ Request full generation (if needed)
-    await fetch(`https://public-api.beatoven.ai/v1/tracks/${trackId}/generate`, {
+    const makeRes = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "x-api-key": process.env.BEATOVEN_API_KEY,
-      },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
     });
 
-    // 4️⃣ Poll until the real audio URL is ready
-    let trackUrl = null;
-    const maxTries = 12; // e.g. 12 tries
-    for (let i = 0; i < maxTries; i++) {
-      await new Promise((r) => setTimeout(r, 5000)); // wait 5 seconds
-
-      const checkRes = await fetch(`https://public-api.beatoven.ai/v1/tracks/${trackId}`, {
-        headers: {
-          "x-api-key": process.env.BEATOVEN_API_KEY,
-        },
-      });
-
-      const checkData = await checkRes.json();
-      console.log("Beatoven check response:", checkData);
-
-      // Suppose the returned JSON has `data.audio_url`
-      const possibleUrl = checkData?.data?.audio_url;
-
-      if (possibleUrl && !possibleUrl.includes("mixkit")) {
-        trackUrl = possibleUrl;
-        break;
-      }
+    const makeText = await makeRes.text();
+    let makeData;
+    try {
+      makeData = JSON.parse(makeText);
+    } catch (e) {
+      throw new Error("Make.com returned invalid JSON: " + makeText);
     }
+
+    console.log("🎧 Make.com response:", makeData);
+
+    const trackUrl =
+      makeData?.track_url ||
+      makeData?.data?.track_url ||
+      makeData?.result?.track_url;
 
     if (!trackUrl) {
-      throw new Error("Timed out waiting for Beatoven track");
+      throw new Error("No track URL returned from Make.com");
     }
 
-    // 5️⃣ Save the track via your save-track endpoint
+    // 👇 3️⃣ Optional: save to your Blob storage (if you have /api/save-track)
     const saveRes = await fetch(
       `${process.env.BASE_URL || "https://syncscore-backend.vercel.app"}/api/save-track`,
       {
@@ -96,21 +59,24 @@ try {
       }
     );
 
-    const saveData = await saveRes.json();
-    if (!saveRes.ok) {
-      throw new Error(saveData.error || "Save-track failed");
+    let storedUrl = null;
+    try {
+      const saveData = await saveRes.json();
+      storedUrl = saveData.url || null;
+    } catch {
+      console.warn("⚠️ Save-track returned non-JSON");
     }
 
-    // 6️⃣ Return to Framer
-    res.status(200).json({
+    // 👇 4️⃣ Respond to Framer with both URLs
+    return res.status(200).json({
+      message: "Track generated successfully",
       beatovenUrl: trackUrl,
-      storedUrl: saveData.url,
+      storedUrl,
     });
-  } catch (err) {
-    console.error("Beatoven error:", err);
-    res.status(500).json({
-      error: "Beatoven generation failed",
-      details: err.message,
-    });
+  } catch (error) {
+    console.error("❌ Generate-track error:", error);
+    return res
+      .status(500)
+      .json({ error: "Generation failed", details: error.message });
   }
 }
