@@ -1,36 +1,49 @@
-// /api/generate-track.js
+// api/generate-track.js
 
 export default async function handler(req, res) {
+  // CORS headers so your Framer app can call this API
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const { mood, genre, duration } = req.body;
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   try {
-    // 1️⃣ Create a track on Beatoven
+    const { mood, genre, duration } = req.body;
+
+    // 1️⃣ Call Beatoven’s public API to create a track
     const createRes = await fetch("https://public-api.beatoven.ai/v1/tracks", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.BEATOVEN_API_KEY,
       },
-      body: JSON.stringify({ mood, genre, duration }),
+      body: JSON.stringify({
+        mood,
+        genre,
+        duration,
+      }),
     });
 
     const createData = await createRes.json();
-    const trackId = createData?.data?.id;
+    console.log("Beatoven create response:", createData);
+
+    // 2️⃣ Extract a track ID (or similar key) — adapt based on what your API returns
+    const trackId =
+      createData?.data?.id ||
+      createData?.id ||
+      createData?.trackId;
 
     if (!trackId) {
       throw new Error("Beatoven did not return a track ID");
     }
 
-    console.log("Track created:", trackId);
-
-    // 2️⃣ Ask Beatoven to generate the full track
+    // 3️⃣ Request full generation (if needed)
     await fetch(`https://public-api.beatoven.ai/v1/tracks/${trackId}/generate`, {
       method: "POST",
       headers: {
@@ -38,60 +51,62 @@ export default async function handler(req, res) {
       },
     });
 
-    // 3️⃣ Poll until we get a real audio_url (up to 60 seconds)
+    // 4️⃣ Poll until the real audio URL is ready
     let trackUrl = null;
-    const maxAttempts = 12; // 12 * 5s = 60 seconds
-    for (let i = 0; i < maxAttempts; i++) {
+    const maxTries = 12; // e.g. 12 tries
+    for (let i = 0; i < maxTries; i++) {
       await new Promise((r) => setTimeout(r, 5000)); // wait 5 seconds
 
       const checkRes = await fetch(`https://public-api.beatoven.ai/v1/tracks/${trackId}`, {
-        headers: { "x-api-key": process.env.BEATOVEN_API_KEY },
+        headers: {
+          "x-api-key": process.env.BEATOVEN_API_KEY,
+        },
       });
 
       const checkData = await checkRes.json();
-      const possibleUrl =
-        checkData?.data?.audio_url ||
-        checkData?.data?.preview_url ||
-        checkData?.audio_url;
+      console.log("Beatoven check response:", checkData);
 
-      // Skip Mixkit previews — wait for real Beatoven audio
+      // Suppose the returned JSON has `data.audio_url`
+      const possibleUrl = checkData?.data?.audio_url;
+
       if (possibleUrl && !possibleUrl.includes("mixkit")) {
         trackUrl = possibleUrl;
         break;
       }
-
-      console.log(`Waiting for Beatoven track (${i + 1}/${maxAttempts})...`);
     }
 
     if (!trackUrl) {
-      throw new Error("Timed out waiting for Beatoven track to be ready");
+      throw new Error("Timed out waiting for Beatoven track");
     }
 
-    console.log("Beatoven track ready:", trackUrl);
-
-    // 4️⃣ Send it to your save-track endpoint for permanent storage
-    const saveRes = await fetch(`${process.env.BASE_URL || "https://syncscore-backend.vercel.app"}/api/save-track`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trackUrl,
-        filename: `beatoven-${Date.now()}.mp3`,
-      }),
-    });
+    // 5️⃣ Save the track via your save-track endpoint
+    const saveRes = await fetch(
+      `${process.env.BASE_URL || "https://syncscore-backend.vercel.app"}/api/save-track`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackUrl,
+          filename: `beatoven-${Date.now()}.mp3`,
+        }),
+      }
+    );
 
     const saveData = await saveRes.json();
     if (!saveRes.ok) {
-      throw new Error(saveData.error || "Failed to save track");
+      throw new Error(saveData.error || "Save-track failed");
     }
 
-    // 5️⃣ Return the permanent blob URL to Framer
+    // 6️⃣ Return to Framer
     res.status(200).json({
-      message: "Track generated and stored successfully",
       beatovenUrl: trackUrl,
       storedUrl: saveData.url,
     });
-  } catch (error) {
-    console.error("Beatoven error:", error);
-    res.status(500).json({ error: "Beatoven generation failed", details: error.message });
+  } catch (err) {
+    console.error("Beatoven error:", err);
+    res.status(500).json({
+      error: "Beatoven generation failed",
+      details: err.message,
+    });
   }
 }
