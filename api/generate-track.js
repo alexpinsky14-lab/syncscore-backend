@@ -16,22 +16,26 @@ export default async function handler(req, res) {
   try {
     const { mood, genre, duration } = req.body;
 
-    // 1️⃣ Call Beatoven’s public API to create a track
-    const createRes = await fetch("https://public-api.beatoven.ai/v1/tracks", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.BEATOVEN_API_KEY,
-      },
-      body: JSON.stringify({
-        mood,
-        genre,
-        duration,
-      }),
-    });
+// 1️⃣ Create a track on Beatoven
+const createRes = await fetch("https://public-api.beatoven.ai/v1/tracks", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": process.env.BEATOVEN_API_KEY,
+  },
+  body: JSON.stringify({ mood, genre, duration }),
+});
 
-    const createData = await createRes.json();
-    console.log("Beatoven create response:", createData);
+const createText = await createRes.text();
+console.log("🔍 Beatoven create response:", createText);
+
+let createData;
+try {
+  createData = JSON.parse(createText);
+} catch {
+  console.error("Failed to parse JSON response from Beatoven");
+  throw new Error("Invalid JSON returned from Beatoven");
+}
 
     // 2️⃣ Extract a track ID (or similar key) — adapt based on what your API returns
     const trackId =
